@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SkyWatch OSINT Dashboard</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root { --bg-dark: #0f172a; --bg-panel: #1e293b; --text-main: #e2e8f0; --text-muted: #94a3b8; --accent: #3b82f6; --danger: #ef4444; --success: #10b981; --border: #334155; }
+        body { font-family: 'Segoe UI', sans-serif; background-color: var(--bg-dark); color: var(--text-main); margin: 0; display: flex; height: 100vh; overflow: hidden; }
+        
+        /* Sidebar */
+        .sidebar { width: 300px; background-color: #020617; border-right: 1px solid var(--border); padding: 20px; overflow-y: auto; display:flex; flex-direction:column; }
+        .logo { font-size: 24px; font-weight: 800; color: var(--accent); margin-bottom: 30px; display: flex; align-items: center; gap: 10px; }
+        
+        /* Inputs & Buttons */
+        input[type="text"] { background: var(--bg-panel); border: 1px solid var(--border); color: white; padding: 8px; border-radius: 4px; width: 70%; outline: none; }
+        button { cursor: pointer; border: none; border-radius: 4px; padding: 8px; transition: 0.2s; }
+        .btn-add { background: var(--accent); color: white; }
+        .btn-scan { background: var(--success); color: white; width: 100%; padding: 12px; margin-bottom: 20px; font-weight:bold; }
+        .btn-scan:hover { background: #059669; }
+
+        /* Tags & Sources */
+        .tags-container { display: flex; flex-wrap: wrap; gap: 8px; margin-top:10px; margin-bottom: 20px;}
+        .tag-chip { background: var(--bg-panel); border: 1px solid var(--border); padding: 4px 8px; border-radius: 4px; font-size: 12px; display: flex; align-items: center; gap: 5px; }
+        .source-category h4 { color: var(--accent); margin: 15px 0 5px 0; font-size: 13px; text-transform:uppercase; }
+        .source-item { font-size: 13px; color: var(--text-muted); display:flex; align-items:center; gap:8px; margin-bottom:4px; }
+
+        /* Main Area */
+        .main { flex: 1; padding: 20px; overflow-y: auto; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid var(--border); padding-bottom: 20px; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 20px; }
+
+        /* News Cards */
+        .card { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px; padding: 20px; position: relative; transition: transform 0.2s; }
+        .card:hover { transform: translateY(-2px); border-color: var(--accent); }
+        .card-header { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 11px; font-weight: bold; color: var(--accent); }
+        .card-title { color: white; font-size: 16px; font-weight: 600; text-decoration: none; display: block; margin-bottom: 10px; }
+        .card-snippet { font-size: 13px; color: var(--text-muted); height: 60px; overflow: hidden; margin-bottom: 15px; }
+        
+        /* Action Buttons on Card */
+        .card-actions { display: flex; gap: 10px; border-top: 1px solid #334155; padding-top: 10px; }
+        .btn-generate { background: linear-gradient(135deg, #6366f1, #a855f7); color: white; font-size: 12px; width: 100%; display: flex; justify-content: center; align-items: center; gap: 8px; }
+        .btn-generate:hover { opacity: 0.9; }
+
+        /* POPUP MODAL */
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; justify-content: center; align-items: center; }
+        .modal-content { background: var(--bg-panel); padding: 25px; border-radius: 8px; width: 500px; border: 1px solid var(--border); box-shadow: 0 0 30px rgba(0,0,0,0.5); }
+        .modal-title { font-size: 18px; font-weight: bold; margin-bottom: 15px; color: white; display:flex; justify-content:space-between; }
+        textarea { width: 100%; height: 200px; background: #0f172a; border: 1px solid var(--border); color: #e2e8f0; padding: 10px; border-radius: 4px; font-family: 'Segoe UI', sans-serif; resize: none; margin-bottom: 15px; }
+        .modal-buttons { display: flex; gap: 10px; justify-content: flex-end; }
+        .btn-copy { background: var(--success); color: white; padding: 8px 16px; }
+        .btn-close { background: #475569; color: white; padding: 8px 16px; }
+
+        /* Loader */
+        .loader { border: 2px solid transparent; border-top: 2px solid white; border-radius: 50%; width: 12px; height: 12px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+    <div class="sidebar">
+        <div class="logo"><i class="fas fa-satellite-dish"></i> SkyWatch</div>
+        <button class="btn-scan" onclick="triggerScan()"><i class="fas fa-radar"></i> RUN LIVE SCAN</button>
+
+        <div style="font-size:12px; color:#94a3b8; font-weight:bold; margin-bottom:5px;">ADD KEYWORD</div>
+        <div style="display:flex; gap:5px;">
+            <input type="text" id="newKeyword" placeholder="e.g. F-16">
+            <button class="btn-add" onclick="addKeyword()"><i class="fas fa-plus"></i></button>
+        </div>
+        <div class="tags-container" id="keywordTags"></div>
+
+        <div id="sourceList"></div>
+    </div>
+
+    <div class="main">
+        <div class="header">
+            <div>
+                <h2 style="margin:0">Live Intelligence Feed</h2>
+                <div style="font-size:13px; color:#94a3b8" id="statusText">System Idle.</div>
+            </div>
+            <button class="btn-add" onclick="fetchIntel()"><i class="fas fa-sync"></i> Refresh</button>
+        </div>
+        <div class="grid" id="intelGrid"></div>
+    </div>
+
+    <div class="modal-overlay" id="postModal">
+        <div class="modal-content">
+            <div class="modal-title">
+                <span><i class="fas fa-magic"></i> AI Social Post</span>
+                <i class="fas fa-times" style="cursor:pointer" onclick="closeModal()"></i>
+            </div>
+            <textarea id="generatedText" placeholder="Generating content..."></textarea>
+            <div class="modal-buttons">
+                <button class="btn-close" onclick="closeModal()">Close</button>
+                <button class="btn-copy" onclick="copyToClipboard()"><i class="fas fa-copy"></i> Copy Text</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = "http://localhost:5000/api";
+        let configData = { keywords: [], sources: {} };
+
+        window.onload = function() { loadConfig(); fetchIntel(); };
+
+        // --- CORE FUNCTIONS ---
+        async function fetchIntel() {
+            const res = await fetch(`${API_URL}/intel`);
+            const data = await res.json();
+            const grid = document.getElementById('intelGrid');
+            grid.innerHTML = '';
+            document.getElementById('statusText').innerText = `Displaying ${data.length} latest reports.`;
+
+            data.forEach(item => {
+                grid.innerHTML += `
+                    <div class="card">
+                        <div class="card-header">
+                            <span>${item.source}</span>
+                            <span>${item.time.split(' ')[1]}</span>
+                        </div>
+                        <a href="${item.link}" target="_blank" class="card-title">${item.title}</a>
+                        <div class="card-snippet">${item.summary}</div>
+                        <div class="card-actions">
+                            <button class="btn-generate" onclick="generateSocialPost('${item.title.replace(/'/g, "\\'")}', '${item.summary.replace(/'/g, "\\'")}')">
+                                <i class="fas fa-wand-magic-sparkles"></i> Create Social Post
+                            </button>
+                        </div>
+                    </div>`;
+            });
+        }
+
+        // --- AI GENERATION ---
+        async function generateSocialPost(title, summary) {
+            // Open Modal
+            const modal = document.getElementById('postModal');
+            const textArea = document.getElementById('generatedText');
+            modal.style.display = 'flex';
+            textArea.value = "Creating viral post... Please wait...";
+
+            // Call API
+            try {
+                const res = await fetch(`${API_URL}/generate_post`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ title: title, summary: summary })
+                });
+                const data = await res.json();
+                textArea.value = data.content || "Error generating content.";
+            } catch (e) {
+                textArea.value = "Error connecting to AI.";
+            }
+        }
+
+        function closeModal() { document.getElementById('postModal').style.display = 'none'; }
+        
+        function copyToClipboard() {
+            const copyText = document.getElementById("generatedText");
+            copyText.select();
+            document.execCommand("copy");
+            alert("Copied to clipboard!");
+        }
+
+        // --- CONFIG & SCAN ---
+        async function loadConfig() {
+            const res = await fetch(`${API_URL}/config`);
+            const data = await res.json();
+            configData = data;
+            
+            // Render Tags
+            const tagContainer = document.getElementById('keywordTags');
+            tagContainer.innerHTML = '';
+            data.keywords.forEach(kw => {
+                tagContainer.innerHTML += `<div class="tag-chip">${kw} <i class="fas fa-times" style="cursor:pointer" onclick="removeKeyword('${kw}')"></i></div>`;
+            });
+
+            // Render Sources
+            const sourceContainer = document.getElementById('sourceList');
+            sourceContainer.innerHTML = '';
+            for (const [category, sources] of Object.entries(data.sources)) {
+                let html = `<div class="source-category"><h4>${category}</h4>`;
+                sources.forEach(src => {
+                    html += `<div class="source-item"><input type="checkbox" ${src.enabled ? 'checked' : ''} onchange="toggleSource('${src.id}', this.checked)"> ${src.name}</div>`;
+                });
+                sourceContainer.innerHTML += html + `</div>`;
+            }
+        }
+
+        async function triggerScan() {
+            const btn = document.querySelector('.btn-scan');
+            btn.innerHTML = `<div class="loader"></div> Scanning...`;
+            await fetch(`${API_URL}/scan`, { method: 'POST' });
+            setTimeout(() => { btn.innerHTML = `<i class="fas fa-radar"></i> RUN LIVE SCAN`; fetchIntel(); }, 2000);
+        }
+
+        async function saveConfig() {
+            await fetch(`${API_URL}/config`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(configData)
+            });
+        }
+
+        function addKeyword() {
+            const val = document.getElementById('newKeyword').value.trim();
+            if (val && !configData.keywords.includes(val)) {
+                configData.keywords.push(val);
+                saveConfig().then(loadConfig);
+            }
+            document.getElementById('newKeyword').value = '';
+        }
+
+        function removeKeyword(val) {
+            configData.keywords = configData.keywords.filter(k => k !== val);
+            saveConfig().then(loadConfig);
+        }
+
+        function toggleSource(id, checked) {
+            // Find and update source locally
+            for (let cat in configData.sources) {
+                let src = configData.sources[cat].find(s => s.id === id);
+                if (src) src.enabled = checked;
+            }
+            // Prepare simpler object for backend save
+            let simplified = { sources: {} };
+            for (let cat in configData.sources) {
+                configData.sources[cat].forEach(s => simplified.sources[s.id] = s.enabled);
+            }
+            // Send update
+            fetch(`${API_URL}/config`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(simplified)
+            });
+        }
+    </script>
+</body>
+</html>
